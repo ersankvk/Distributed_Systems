@@ -1,18 +1,14 @@
 package at.technikum_wien.gui;
 
+
 import at.technikum_wien.gui.model.CurrentPercentage;
 import at.technikum_wien.gui.model.UsageHour;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import javafx.application.Application;
-import javafx.geometry.HPos;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.stage.Stage;
 
@@ -30,18 +26,16 @@ public class Main extends Application {
     private final Label communityPoolLabel = new Label("Community Pool: ");
     private final Label gridPortionLabel = new Label("Grid Portion: ");
 
-    private final DatePicker startDatePicker = new DatePicker(LocalDate.now());
+    private final DatePicker startDatePicker = new DatePicker();
     private final ComboBox<String> startTimePicker = new ComboBox<>();
-    private final DatePicker endDatePicker = new DatePicker(LocalDate.now());
+    private final DatePicker endDatePicker = new DatePicker();
     private final ComboBox<String> endTimePicker = new ComboBox<>();
 
-    private final Label totalProducedLabel = new Label("Community produced: ");
-    private final Label totalUsedLabel = new Label("Community used: ");
-    private final Label totalGridLabel = new Label("Grid used: ");
+    private final Label totalProducedLabel = new Label("Community produced: 0 kWh");
+    private final Label totalUsedLabel = new Label("Community used: 0 kWh");
+    private final Label totalGridLabel = new Label("Grid used: 0 kWh");
 
-    private final ObjectMapper mapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient client = HttpClient.newHttpClient();
 
     @Override
@@ -49,34 +43,28 @@ public class Main extends Application {
         primaryStage.setTitle("Energy Community Dashboard");
 
         GridPane grid = new GridPane();
-        grid.setVgap(8);
+        grid.setVgap(10);
         grid.setHgap(10);
         grid.setPadding(new Insets(10));
 
-        // Column constraints for better alignment
-        ColumnConstraints col1 = new ColumnConstraints();
-        col1.setPercentWidth(33);
-        ColumnConstraints col2 = new ColumnConstraints();
-        col2.setPercentWidth(33);
-        ColumnConstraints col3 = new ColumnConstraints();
-        col3.setPercentWidth(34);
-        grid.getColumnConstraints().addAll(col1, col2, col3);
-
+        // Time picker options
         for (int h = 0; h < 24; h++) {
-            String hour = String.format("%02d:00", h);
-            startTimePicker.getItems().add(hour);
-            endTimePicker.getItems().add(hour);
+            String formatted = String.format("%02d:00", h);
+            startTimePicker.getItems().add(formatted);
+            endTimePicker.getItems().add(formatted);
         }
         startTimePicker.setValue("14:00");
         endTimePicker.setValue("14:00");
 
+        // Add current values
         Button refreshBtn = new Button("refresh");
         refreshBtn.setOnAction(e -> fetchCurrent());
 
-        grid.add(communityPoolLabel, 0, 0, 2, 1);
-        grid.add(gridPortionLabel, 0, 1, 2, 1);
+        grid.add(communityPoolLabel, 0, 0);
+        grid.add(gridPortionLabel, 0, 1);
         grid.add(refreshBtn, 0, 2);
 
+        // Add historical range selection
         grid.add(new Label("Start"), 0, 3);
         grid.add(startDatePicker, 1, 3);
         grid.add(startTimePicker, 2, 3);
@@ -89,18 +77,13 @@ public class Main extends Application {
         showDataBtn.setOnAction(e -> fetchHistorical());
         grid.add(showDataBtn, 0, 5);
 
+        // Result labels
         grid.add(totalProducedLabel, 0, 6, 3, 1);
         grid.add(totalUsedLabel, 0, 7, 3, 1);
         grid.add(totalGridLabel, 0, 8, 3, 1);
 
-        // Style tweaks to look closer to the image
-        GridPane.setHalignment(refreshBtn, HPos.LEFT);
-        GridPane.setHalignment(showDataBtn, HPos.LEFT);
-        grid.setAlignment(Pos.TOP_LEFT);
-
-        primaryStage.setScene(new Scene(grid, 340, 280)); // precise size
+        primaryStage.setScene(new Scene(grid, 500, 400));
         primaryStage.show();
-
         fetchCurrent();
     }
 
@@ -108,7 +91,6 @@ public class Main extends Application {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("http://localhost:8080/energy/current"))
-                    .GET()
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -117,20 +99,19 @@ public class Main extends Application {
             gridPortionLabel.setText(String.format("Grid Portion: %.2f%%", cp.getGridPortion()));
         } catch (Exception e) {
             communityPoolLabel.setText("Failed to fetch current data");
-            gridPortionLabel.setText("");
         }
     }
 
     private void fetchHistorical() {
         try {
-            LocalDateTime start = LocalDateTime.of(startDatePicker.getValue(), LocalTime.parse(startTimePicker.getValue()));
-            LocalDateTime endRaw = LocalDateTime.of(endDatePicker.getValue(), LocalTime.parse(endTimePicker.getValue()));
-            LocalDateTime end = endRaw.withMinute(59).withSecond(59);
+            LocalDateTime start = LocalDateTime.of(startDatePicker.getValue(),
+                    LocalTime.parse(startTimePicker.getValue()));
+            LocalDateTime end = LocalDateTime.of(endDatePicker.getValue(),
+                    LocalTime.parse(endTimePicker.getValue()));
 
-            String formattedStart = start.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            String formattedEnd = end.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            String url = String.format("http://localhost:8080/energy/historical?start=%s&end=%s",
+                    start, end);
 
-            String url = String.format("http://localhost:8080/energy/historical?start=%s&end=%s", formattedStart, formattedEnd);
             HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -143,11 +124,9 @@ public class Main extends Application {
             totalProducedLabel.setText(String.format("Community produced: %.3f kWh", totalProduced));
             totalUsedLabel.setText(String.format("Community used: %.3f kWh", totalUsed));
             totalGridLabel.setText(String.format("Grid used: %.3f kWh", totalGrid));
+
         } catch (Exception e) {
             totalProducedLabel.setText("Error fetching data");
-            totalUsedLabel.setText("");
-            totalGridLabel.setText("");
-            e.printStackTrace();
         }
     }
 
